@@ -179,7 +179,7 @@ class Player(object):
         if pref is None:
             self.takeFrom = self._takeFirstFrom
             self.pref = []
-        elif type(pref) is str:
+        elif type(pref) is str and len(pref):
             if pref.lower() == 'smart':
                 self.takeFrom = self._takeSmart
                 return
@@ -242,8 +242,6 @@ class Player(object):
             return hand[0:index] + hand[index+1:]
 
 
-# players = [Player() for p in range(nplayers)]
-
 def trial(players):
     from collections import deque
     nplayers = len(players)
@@ -270,9 +268,7 @@ def trial(players):
     return finalscores, roundscores
 
 
-if __name__ == '__main__':
-    import sys
-
+def testScoring():
     # Test the scoring for a random hand.
     print('=== TEST ===')
     deck = newDeck()
@@ -285,21 +281,53 @@ if __name__ == '__main__':
     print('nigiri:  \t', nigiriscore(hand))
     print('=== ==== ===')
 
-    # Evaluate a histogram of player scores per round.
-    ngames = 1000
 
-    rounds = []
-    scores = []
+if __name__ == '__main__':
+    import sys 
+    import matplotlib.pyplot as plt
+    
+    if len(sys.argv) == 2 and sys.argv[1].lower() == 'test':
+        testScoring()
+        sys.exit()
+    
+    if len(sys.argv) == 2 and sys.argv[1].lower() == 'simple':
+        # Evaluate a histogram of player scores per round.
+        ngames = 10000
 
-    if len(sys.argv) == 1 or sys.argv[1].lower() == 'simple':
+        rounds = []
+        scores = []
+
         for i in range(ngames):
             s, r = simpleGame(4)
             rounds.append(r)
             scores.append(s)
-    else:
+        labels = [str(i+1) for i in range(4)]
+        rounds = np.array(rounds)
+        print (rounds.shape)
+        print ("Mean score by player and round across %d games:" % ngames)
+        [print(row) for row in rounds.mean(axis=0)]
+
+        scores = np.array(scores)
+        print ("Mean final score by player across %d games:" % ngames)
+        print(scores.mean(axis=0))
+
+        plt.hist(rounds.flatten(), bins=int( sub(rounds.max(), rounds.min()) ))
+        plt.hist(scores.flatten(), bins=int( sub(scores.max(), scores.min()) ))
+        plt.legend(prop={'size': 10})
+        plt.show()
+
+    elif len(sys.argv) > 1 and sys.argv[1].lower() == 'prefs':
+        # Evaluate a histogram of player scores per round.
+        ngames = 10000
+
+        rounds = []
+        scores = []
+
         players = []
-        for arg in sys.argv[1:]:
+        labels = []
+        for i, arg in enumerate(sys.argv[2:]):
             players.append(Player())
+            labels.append("%d: %s" % (i+1, arg))
             if arg.lower() != 'none':
                 players[-1].setPreference(arg)
         for i in range(ngames):
@@ -307,16 +335,37 @@ if __name__ == '__main__':
             rounds.append(r)
             scores.append(s)
 
-    rounds = np.array(rounds)
-    print (rounds.shape)
-    print ("Mean score by player and round across %d games:" % ngames)
-    [print(row) for row in rounds.mean(axis=0)]
+        rounds = np.array(rounds)
+        print (rounds.shape)
+        print ("Mean score by player and round across %d games:" % ngames)
+        [print(row) for row in rounds.mean(axis=0)]
 
-    scores = np.array(scores)
-    print ("Mean final score by player across %d games:" % ngames)
-    print(scores.mean(axis=0))
+        scores = np.array(scores)
+        print ("Mean final score by player across %d games:" % ngames)
+        print(scores.mean(axis=0))
    
-    import matplotlib.pyplot as plt
-    plt.hist(rounds.flatten(), bins=int( sub(rounds.max(), rounds.min()) ))
-    plt.hist(scores.flatten(), bins=int( sub(scores.max(), scores.min()) ))
-    plt.show()
+        plt.hist(scores, bins=int(sub(scores.max(), scores.min())), histtype='step', label=labels, density=True)
+        plt.legend(prop={'size': 10})
+        plt.show()
+
+    else:
+        prefs = ['nigiri', 'maki', 'tempura', 'dumpling', 'pudding', 'sashimi']
+        ngames = 10000
+        players = [Player() for p in range(4)]
+        fig, axs = plt.subplots(2, 3, sharex=True, sharey=True, tight_layout=True)
+        fig.title = 'score probability distributions'
+
+        for i_p, pref in enumerate(prefs):
+            print ("Pref %d of %d: %s ..." % (i_p+1, len(prefs), pref))
+            players[0].setPreference(pref)
+            labels = [pref] + ['none'] * (len(players)-1)
+            scores = []
+            for i_g in range(ngames):
+                s, r = trial(players)
+                scores.append(s)
+            scores=np.array(scores)
+            axs.flat[i_p].hist(scores, bins=int(sub(scores.max(), scores.min())), 
+                               histtype='step', label=labels, density=True)
+            axs.flat[i_p].legend(title='strategy', prop={'size':8})
+        print('... done.')
+        plt.show()
