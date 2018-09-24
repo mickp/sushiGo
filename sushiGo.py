@@ -110,26 +110,40 @@ def puddingscores(puddings):
     return scores
 
 
+cardsPerPlayer = {2: 10,
+                  3: 9,
+                  4: 8,
+                  5: 7}
+
+
+deckCounts = {
+    TEMPURA: 14,
+    SASHIMI: 14,
+    DUMPLING: 14,
+    MAKI2: 12,
+    MAKI3: 8,
+    MAKI1: 6,
+    SALMON: 10,
+    SQUID: 5,
+    EGG: 5,
+    PUDDING: 10,
+    WASABI: 6,
+    CHOPSTICKS: 4
+}
+
+probabilities = {k:v / sum(deckCounts.values()) for k, v in deckCounts.items()}
+
 def newDeck():
-    deck = 14 * [TEMPURA] +\
-           14 * [SASHIMI] +\
-           14 * [DUMPLING] +\
-           12 * [MAKI2] +\
-            8 * [MAKI3] +\
-            6 * [MAKI1] +\
-           10 * [SALMON] +\
-            5 * [SQUID] +\
-            5 * [EGG] +\
-           10 * [PUDDING] +\
-            6 * [WASABI] +\
-            4 * [CHOPSTICKS]
+    from itertools import chain
+    deck = list(chain.from_iterable([v * [k] for k, v in deckCounts.items()]))
     random.shuffle(deck)
     return deck
+
 
 def simpleGame(nplayers):
     deck = newDeck()
     # Number of cards per hand each round
-    ncards = {2: 10, 3: 9, 4: 8, 5: 7}[nplayers]
+    ncards = cardsPerPlayer[nplayers]
     nrounds = 3
 
     roundscores = []
@@ -152,6 +166,11 @@ def simpleGame(nplayers):
 class Player(object):
     instances = []
 
+    @classmethod
+    def allHands(cls):
+        return [p.hand for p in cls.instances]
+
+
     def __init__(self):
         self.__class__.instances.append(weakref.proxy(self))
         self.hand = '';
@@ -160,7 +179,7 @@ class Player(object):
         self.puddings = 0
 
 
-    def countMaki(self):
+    def makiCount(self):
         c = self.hand.count
         return 3 * c(MAKI3) + 2 * c(MAKI2) + c(MAKI1)
 
@@ -175,6 +194,14 @@ class Player(object):
         self.hand = ''
 
 
+    def otherHands(self):
+        return [p.hand for p in Player.instances if p != self]
+
+
+    def otherMakiCounts(self):
+        return[p.makiCount() for p in Player.instances if p != self]
+
+
     def setPreference(self, pref):
         if pref is None:
             self.takeFrom = self._takeFirstFrom
@@ -182,6 +209,9 @@ class Player(object):
         elif type(pref) is str and len(pref):
             if pref.lower() == 'smart':
                 self.takeFrom = self._takeSmart
+                return
+            elif pref.lower() == 'smarter':
+                self.takeFrom = self._takeSmarter
                 return
             prefs = pref.upper().split(',')
             expansions = {'MAKI': [MAKI3, MAKI2, MAKI1],
@@ -197,7 +227,55 @@ class Player(object):
             self.takeFrom = self._takePreferenceOrFirst
 
 
+    def _takeSmarter(self, hand):
+        if len(hand) == 1:
+            self.hand += hand[0]
+            return ''
+
+        priorities = {k:0 for k in deckCounts.keys()}
+
+        if re.match(wasabimatch + '$', self.hand):
+            priorities[SQUID] += 9     # 9 points
+            priorities[SALMON] += 6    # 6 points
+            priorities[EGG] += 3       # 3 points
+        else:
+            priorities[SQUID] += 3
+            priorities[SALMON] += 2
+            priorities[EGG] += 1
+        if self.hand.count(TEMPURA) % 2:
+            priorities[TEMPURA] += 5   # 5 points
+        else:
+            priorities[TEMPURA] += 5 * len(hand) * probabilities[TEMPURA]
+        if self.hand.count(SASHIMI) % 3 == 2:
+            priorities[SASHIMI] += 10 # 10 points
+        elif self.hand.count(SASHIMI) % 3 == 1:
+            # Chance at 10 points - naive probability.
+            priorities[SASHIMI] += 10 * len(hand) * probabilities[SASHIMI]
+        else:
+            priorities[SASHIMI] += 10 * len(hand) * probabilities[SASHIMI] * probabilities[SASHIMI]
+
+        priorities[MAKI3] = 3 / 4
+        priorities[MAKI2] = 2 / 4
+        priorities[MAKI1] = 1 / 4
+
+        priorities[WASABI] = len(hand) * (probabilities[SQUID] + probabilities[SALMON] + probabilities[EGG])
+
+        priorities[CHOPSTICKS] = -1
+
+        prlist = sorted(priorities, key=priorities.get, reverse=True)
+
+        for p in prlist:
+            if p in hand:
+                index = hand.find(p)
+                self.hand += p
+                return hand[0:index] + hand[index+1:]
+
+
     def _takeSmart(self, hand):
+        if len(hand) == 1:
+            self.hand += hand[0]
+            return ''
+
         exclude = CHOPSTICKS
         index = 0
 
@@ -245,7 +323,7 @@ class Player(object):
 def trial(players):
     from collections import deque
     nplayers = len(players)
-    ncards = {2: 10, 3: 9, 4: 8, 5: 7}[nplayers]
+    ncards = cardsPerPlayer[nplayers]
     deck = newDeck()
     
     [p.newGame() for p in players]
@@ -349,10 +427,10 @@ if __name__ == '__main__':
         plt.show()
 
     else:
-        prefs = ['nigiri', 'maki', 'tempura', 'dumpling', 'pudding', 'sashimi']
+        prefs = ['nigiri', 'maki', 'tempura', 'dumpling', 'pudding', 'sashimi', 'wasabi', 'smart', 'smarter']
         ngames = 10000
         players = [Player() for p in range(4)]
-        fig, axs = plt.subplots(2, 3, sharex=True, sharey=True, tight_layout=True)
+        fig, axs = plt.subplots(3, 3, sharex=True, sharey=True, tight_layout=True)
         fig.title = 'score probability distributions'
 
         for i_p, pref in enumerate(prefs):
