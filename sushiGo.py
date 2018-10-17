@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+    #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 ## Copyright (C) 2018 Mick Phillips <mick.phillips@gmail.com>
@@ -433,15 +433,19 @@ if __name__ == '__main__':
         fig, axs = plt.subplots(3, 3, sharex=True, sharey=True, tight_layout=True)
         fig.title = 'score probability distributions'
 
+        from multiprocessing import Pool
+
         for i_p, pref in enumerate(prefs):
+            pool = Pool()
             print ("Pref %d of %d: %s ..." % (i_p+1, len(prefs), pref))
             players[0].setPreference(pref)
             labels = [pref] + ['none'] * (len(players)-1)
-            scores = []
+            results = []
             for i_g in range(ngames):
-                s, r = trial(players)
-                scores.append(s)
-            scores=np.array(scores)
+                results.append(pool.apply_async(trial, [players]))
+            pool.close()
+            pool.join()
+            scores=np.array([r.get()[0] for r in results])
             axs.flat[i_p].hist(scores, bins=int(sub(scores.max(), scores.min())), 
                                histtype='step', label=labels, density=True)
             axs.flat[i_p].legend(title='strategy', prop={'size':8})
